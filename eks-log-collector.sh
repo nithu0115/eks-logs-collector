@@ -5,29 +5,21 @@
 # - Collects general operating system logs.
 # - Optional ability to enable debug mode for the Docker daemon
 
-
 export LANG="C"
 export LC_ALL="C"
 
-# Common options
-curdir="$(dirname $0)"
-infodir="${curdir}/ekslogsbundle"
-info_system="${infodir}/system"
-days3=`date -d "-3 days" '+%Y-%m-%d %H:%M'`
-
 # Global options
-pkgtype=''  # defined in get_sysinfo
-os_name=''  # defined in get_sysinfo
-progname='' # defined in parse_options
-
-
-# Common functions
-# ---------------------------------------------------------------------------------------
+PROGRAM_NAME="$(basename "$0" .sh)" 
+COLLECT_DIR="/tmp/${PROGRAM_NAME}"
+DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
+INSTANCE_ID=""
+INIT_TYPE=""
+PACKAGE_TYPE=""
 
 help()
 {
-  echo "USAGE: ${progname} [--mode=[brief|debug]]"
-  echo "       ${progname} --help"
+  echo "USAGE: ${PROGRAM_NAME} --mode=collect|enable_debug"
+  echo "       ${PROGRAM_NAME} --help"
   echo ""
   echo "OPTIONS:"
   echo "     --mode  Sets the desired mode of the script. For more information,"
@@ -35,26 +27,31 @@ help()
   echo "     --help  Show this help message."
   echo ""
   echo "MODES:"
-  echo "     brief       Gathers basic operating system, Docker daemon, and Amazon"
+  echo "     collect       Gathers basic operating system, Docker daemon, and Amazon"
   echo "                 EKS related config files and logs. This is the default mode."
-  echo "     debug       Collects 'brief' logs and also enables debug mode for the"
-  echo "                 Docker daemon."
-  echo "     debug-only  Enables debug mode for the Docker daemon"
+  echo "     enable_debug  Enables debug mode for the Docker daemon"
+}
+
+systemd_check()
+{
+  if [[ -L "/sbin/init" ]]; then
+      INIT_TYPE="systemd"
+    else
+      INIT_TYPE="other"
+    fi
 }
 
 parse_options() {
   local count="$#"
 
-  progname="$0"
-
-  for i in `seq ${count}`; do
-    eval arg=\$$i
-    param="`echo ${arg} | awk -F '=' '{print $1}' | sed -e 's|--||'`"
-    val="`echo ${arg} | awk -F '=' '{print $2}'`"
+  for i in $(seq "${count}"); do
+    eval arg="\$$i"
+    param="$(echo "${arg}" | awk -F '=' '{print $1}' | sed -e 's|--||')"
+    val="$(echo "${arg}" | awk -F '=' '{print $2}')"
 
     case "${param}" in
       mode)
-        eval $param="${val}"
+        eval "${param}"="${val}"
         ;;
       help)
         help && exit 0
@@ -67,21 +64,23 @@ parse_options() {
   done
 }
 
-ok() {
-  echo "ok"
+ok()
+{
+  echo
 }
 
-info() {
+info()
+{
   echo "$*"
 }
 
 try() {
-  local action=$@
+  local action=$*
   echo -n "Trying to $action... "
 }
 
 warning() {
-  local reason=$@
+  local reason=$*
   echo "Warning: $reason "
 }
 
@@ -90,7 +89,7 @@ fail() {
 }
 
 failed() {
-  local reason=$@
+  local reason=$*
   echo "failed: $reason"
 }
 
@@ -104,9 +103,30 @@ is_root()
 {
   try "check if the script is running as root"
 
-  if [[ "$(id -u)" != "0" ]]; then
+  if [[ "$(id -u)" -ne 0 ]]; then
     die "This script must be run as root!"
+  fi
 
+  ok
+}
+
+create_directories() {
+    mkdir -p "${COLLECT_DIR}"/{kernel,system,eks,docker,storage,var_log}
+}
+
+instance_metadata() {
+  try "resolve instance-id"
+
+  local curl_bin
+  curl_bin="$(command -v curl)"
+
+  if [[ -z "${curl_bin}" ]]; then
+      warning "Curl not found, please install curl. You can still view the logs in the collect folder."
+      INSTANCE_ID=$(hostname)
+      echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
+    else
+      INSTANCE_ID=$(curl --max-time 3 -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+      echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
   fi
 
   ok
@@ -116,56 +136,31 @@ is_diskfull()
 {
   try "check disk space usage"
 
-  threshold=70
-  i=2
-  result=`df -kh |grep -v "Filesystem" | awk '{ print $5 }' | sed 's/%//g'`
+  local threshold
+  local result
+  threshold=1500000
+  result=$(df / | grep -v "Filesystem" | awk '{ print $4 }')
 
-  for percent in ${result}; do
-    if [[ "${percent}" -gt "${threshold}" ]]; then
-      partition=`df -kh | head -$i | tail -1| awk '{print $1}'`
-      warning "${partition} is ${percent}% full, please ensure adequate disk space to collect and store the log files."
-    fi
-    let i=$i+1
-  done
+  if [[ "${result}" -lt "${threshold}" ]]; then
+    die "Less than $((threshold>>10))MB, please ensure adequate disk space to collect and store the log files."
+  fi
 
   ok
 }
 
 cleanup()
 {
-  rm -rf ${infodir} >/dev/null 2>&1
-  rm -f ${curdir}/ekslogsbundle.tar.gz
+  rm -rf "${COLLECT_DIR}" >/dev/null 2>&1
 }
 
 init() {
   is_root
-  try_set_instance_infodir
-  get_sysinfo
+  create_directories
+  instance_metadata
+  systemd_check
 }
 
-try_set_instance_infodir() {
-  try "resolve instance-id"
-
-  if command -v curl > /dev/null; then
-    instance_id=$(curl --max-time 3 -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
-    if [[ -n "$instance_id" ]]; then
-      # Put logs into a directory for this instance.
-      infodir="${infodir}/${instance_id}"
-      info_system="${infodir}/system"
-      echo "$instance_id" | $info_system/instance-id.txt
-    else
-      warning "unable to resolve instance metadata"
-      return 1
-    fi
-  else
-    warning "curl is unavailable for querying"
-    return 1
-  fi
-
-  ok
-}
-
-collect_brief() {
+collect() {
   init
   is_diskfull
   get_common_logs
@@ -173,6 +168,7 @@ collect_brief() {
   get_mounts_info
   get_selinux_info
   get_iptables_info
+  get_pkgtype
   get_pkglist
   get_system_services
   get_docker_info
@@ -190,56 +186,14 @@ pack()
 {
   try "archive gathered log information"
 
-  local tar_bin
-  tar_bin="`which tar 2>/dev/null`"
-  [ -z "${tar_bin}" ] && warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
+  local TAR_BIN
+  TAR_BIN="$(command -v tar)"
 
-  cd ${curdir}
-  ${tar_bin} -cvzf ${infodir}.tar.gz ${infodir} > /dev/null 2>&1
-
-  ok
-}
-
-#
-# ---------------------------------------------------------------------------------------
-get_sysinfo()
-{
-  try "collect system information"
-
-  res="`/bin/uname -m`"
-  [ "${res}" = "amd64" -o "$res" = "x86_64" ] && arch="x86_64" || arch="i386"
-
-  found_file=""
-  for f in system-release redhat-release lsb-release debian_version; do
-    [ -f "/etc/${f}" ] && found_file="${f}" && break
-  done
-
-  case "${found_file}" in
-    system-release)
-      pkgtype="rpm"
-      if grep --quiet "Amazon" /etc/${found_file}; then
-        os_name="amazon"
-      elif grep --quiet "Red Hat" /etc/${found_file}; then
-        os_name="redhat"
-      fi
-      ;;
-    debian_version)
-      pkgtype="deb"
-      if grep --quiet "8" /etc/${found_file}; then
-        os_name="debian"
-      fi
-      ;;
-    lsb-release)
-      pkgtype="deb"
-      if grep --quiet "Ubuntu 14.04" /etc/${found_file}; then
-        os_name="ubuntu14"
-      fi
-      ;;
-    *)
-      fail
-      die "Unsupported OS detected."
-      ;;
-  esac
+  if [[ -z "${TAR_BIN}" ]]; then
+      warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
+    else
+      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/ekslogsbundle_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
+  fi
 
   ok
 }
@@ -247,15 +201,14 @@ get_sysinfo()
 get_mounts_info()
 {
   try "get mount points and volume information"
-  mkdir -p ${info_system}
-  mount > ${info_system}/mounts.txt
-  echo "" >> ${info_system}/mounts.txt
-  df -h >> ${info_system}/mounts.txt
+  mount > "${COLLECT_DIR}"/storage/mounts.txt
+  echo >> "${COLLECT_DIR}"/storage/mounts.txt
+  df -h >> "${COLLECT_DIR}"/storage/mounts.txt
 
-  if [ -e /sbin/lvs ]; then
-    lvs > ${info_system}/lvs.txt
-    pvs > ${info_system}/pvs.txt
-    vgs > ${info_system}/vgs.txt
+  if [[ -e /sbin/lvs ]]; then
+    lvs > "${COLLECT_DIR}"/storage/lvs.txt
+    pvs > "${COLLECT_DIR}"/storage/pvs.txt
+    vgs > "${COLLECT_DIR}"/storage/vgs.txt
   fi
 
   ok
@@ -265,14 +218,16 @@ get_selinux_info()
 {
   try "check SELinux status"
 
-  enforced="`getenforce 2>/dev/null`"
-
-  [ "${pkgtype}" != "rpm" -o -z "${enforced}" ] \
-    && info "not installed" \
-    && return
-
-  mkdir -p ${info_system}
-  echo -e "SELinux mode:\n    ${enforced}" >  ${info_system}/selinux.txt
+  local GETENFORCE_BIN
+  local SELINUX_STATUS
+  GETENFORCE_BIN="$(command -v getenforce)"
+  SELINUX_STATUS="$(${GETENFORCE_BIN})" 2>/dev/null
+  
+  if [[ -z "${SELINUX_STATUS}" ]]; then
+      echo -e "SELinux mode:\n\t Not installed" > "${COLLECT_DIR}"/system/selinux.txt
+    else
+      echo -e "SELinux mode:\n\t ${SELINUX_STATUS}" > "${COLLECT_DIR}"/system/selinux.txt
+  fi
 
   ok
 }
@@ -281,9 +236,9 @@ get_iptables_info()
 {
   try "get iptables list"
 
-  mkdir -p ${info_system}
-  /sbin/iptables -nvL -t filter > ${info_system}/iptables-filter.txt
-  /sbin/iptables -nvL -t nat  > ${info_system}/iptables-nat.txt
+  /sbin/iptables -nvL -t filter > "${COLLECT_DIR}"/system/iptables-filter.txt
+  /sbin/iptables -nvL -t nat  > "${COLLECT_DIR}"/system/iptables-nat.txt
+  iptables-save > "${COLLECT_DIR}"/system/iptables-save.out
 
   ok
 }
@@ -291,11 +246,9 @@ get_iptables_info()
 get_common_logs()
 {
   try "collect common operating system logs"
-  dstdir="${info_system}/var_log"
-  mkdir -p ${dstdir}
 
   for entry in syslog messages aws-routed-eni containers pods cloud-init.log cloud-init-output.log audit; do
-    [ -e "/var/log/${entry}" ] && cp -fR /var/log/${entry} ${dstdir}/
+    [[ -e "/var/log/${entry}" ]] && cp -fR /var/log/${entry} "${COLLECT_DIR}"/var_log/
   done
 
   ok
@@ -304,40 +257,25 @@ get_common_logs()
 get_kernel_logs()
 {
   try "collect kernel logs"
-  dstdir="${info_system}/kernel"
-  mkdir -p "$dstdir"
-  if [ -e "/var/log/dmesg" ]; then
-    cp -f /var/log/dmesg "$dstdir/dmesg.boot"
+
+  if [[ -e "/var/log/dmesg" ]]; then
+      cp -f /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
-  dmesg > "$dstdir/dmesg.current"
-  ok
+  dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
 }
 
 get_docker_logs()
 {
   try "collect Docker daemon logs"
-  dstdir="${info_system}/docker_log"
-  mkdir -p ${dstdir}
-  case "${os_name}" in
-    amazon)
-      if [ -e /bin/journalctl ]; then
-         /bin/journalctl -u docker --since "${days3}" > ${dstdir}/docker
-      else
-         cp /var/log/docker ${dstdir}
-      fi
+
+  case "${INIT_TYPE}" in
+    systemd)
+      journalctl -u docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
       ;;
-    redhat)
-      if [ -e /bin/journalctl ]; then
-        /bin/journalctl -u docker --since "${days3}" > ${dstdir}/docker
-      fi
-      ;;
-    debian)
-      if [ -e /bin/journalctl ]; then
-        /bin/journalctl -u docker --since "${days3}" > ${dstdir}/docker
-      fi
-      ;;
-    ubuntu14)
-      cp -f /var/log/upstart/docker* ${dstdir}
+    other)
+      for entry in docker upstart/docker; do
+        [[ -e "/var/log/${entry}" ]] && cp --force --recursive /var/log/${entry} "${COLLECT_DIR}"/docker/
+      done
       ;;
     *)
       warning "The current operating system is not supported."
@@ -350,19 +288,17 @@ get_docker_logs()
 get_eks_logs_and_configfiles()
 {
   try "collect Amazon EKS container agent logs"
-  dstdir="${info_system}/eks"
 
-  mkdir -p ${dstdir}
-  mkdir -p ${dstdir}
-  case "${os_name}" in
-    amazon)
-      if [ -e /bin/journalctl ]; then
-      /bin/journalctl -u kubelet --since "${days3}" > ${dstdir}/kubelet
-      /bin/journalctl -u kubeproxy --since "${days3}" > ${dstdir}/kubeproxy
-      fi
-      cp -r /var/lib/kubelet/kubeconfig ${dstdir}/kubeconfig
-      cp -r /etc/systemd/system/kube-proxy.service ${dstdir}/kube-proxy.service
-      cp -r /etc/systemd/system/kubelet.service ${dstdir}/kubelet.service
+  case "${INIT_TYPE}" in
+    systemd)
+      /bin/journalctl -u kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubelet
+      /bin/journalctl -u kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubeproxy
+
+      for entry in kubelet kube-proxy; do
+        [[ -e "/etc/systemd/system/${entry}.service" ]] && cp -fR "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/eks/
+      done
+
+      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/eks/kubeconfig
       ;;
     *)
       warning "The current operating system is not supported."
@@ -372,17 +308,31 @@ get_eks_logs_and_configfiles()
   ok
 }
 
+get_pkgtype()
+{
+  try "detect package manager"
+
+  if [[ "$(command -v rpm )" ]]; then
+    PACKAGE_TYPE=rpm
+  elif [[ "$(command -v deb )" ]]; then
+    PACKAGE_TYPE=deb
+  else
+    PACKAGE_TYPE='unknown'
+  fi
+
+  ok
+}
+
 get_pkglist()
 {
   try "detect installed packages"
 
-  mkdir -p ${info_system}
-  case "${pkgtype}" in
+  case "${PACKAGE_TYPE}" in
     rpm)
-      rpm -qa >${info_system}/pkglist.txt 2>&1
+      rpm -qa > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
       ;;
     deb)
-      dpkg --list > ${info_system}/pkglist.txt 2>&1
+      dpkg --list > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
       ;;
     *)
       warning "Unknown package type."
@@ -395,27 +345,24 @@ get_pkglist()
 get_system_services()
 {
   try "detect active system services list"
-  mkdir -p ${info_system}
-  case "${os_name}" in
-    amazon)
-      /bin/systemctl list-units > ${info_system}/services.txt 2>&1
+
+  case "${INIT_TYPE}" in
+    systemd)
+      systemctl list-units > "${COLLECT_DIR}"/system/services.txt 2>&1
       ;;
-    debian)
-      /bin/systemctl list-units > ${info_system}/services.txt 2>&1
-      ;;
-    ubuntu14)
-      /sbin/initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > ${info_system}/services.txt 2>&1
-      printf "\n\n\n\n" >> ${info_system}/services.txt 2>&1
-      /usr/bin/service --status-all >> ${info_system}/services.txt 2>&1
+    other)
+      /sbin/initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > "${COLLECT_DIR}"/system/services.txt 2>&1
+      printf "\n\n\n\n" >> "${COLLECT_DIR}"/services.txt 2>&1
+      /usr/bin/service --status-all >> "${COLLECT_DIR}"/services.txt 2>&1
       ;;
     *)
       warning "Unable to determine active services."
       ;;
   esac
 
-  top -b -n 1 > ${info_system}/top.txt 2>&1
-  ps fauxwww > ${info_system}/ps.txt 2>&1
-  netstat -plant > ${info_system}/netstat.txt 2>&1
+  timeout 75 top -b -n 1 > "${COLLECT_DIR}"/system/top.txt 2>&1
+  timeout 75 ps fauxwww > "${COLLECT_DIR}"/system/ps.txt 2>&1
+  timeout 75 netstat -plant > "${COLLECT_DIR}"/system/netstat.txt 2>&1
 
   ok
 }
@@ -424,14 +371,11 @@ get_docker_info()
 {
   try "gather Docker daemon information"
 
-  ps -ef |grep dockerd |grep -v grep >> /dev/null
-  if [[ "$?" -eq 0 ]]; then
-    mkdir -p ${info_system}/docker
-
-    timeout 75 docker info > ${info_system}/docker/docker-info.txt 2>&1 || echo "Timed out, ignoring \"docker info output \" "
-    timeout 75 docker ps --all --no-trunc > ${info_system}/docker/docker-ps.txt 2>&1 || echo "Timed out, ignoring \"docker ps --all --no-truc output \" "
-    timeout 75 docker images > ${info_system}/docker/docker-images.txt 2>&1 || echo "Timed out, ignoring \"docker images output \" "
-    timeout 75 docker version > ${info_system}/docker/docker-version.txt 2>&1 || echo "Timed out, ignoring \"docker version output \" "
+  if [[ "$(pgrep dockerd)" -ne 0 ]]; then
+    timeout 75 docker info > "${COLLECT_DIR}"/docker/docker-info.txt 2>&1 || echo "Timed out, ignoring \"docker info output \" "
+    timeout 75 docker ps --all --no-trunc > "${COLLECT_DIR}"/docker/docker-ps.txt 2>&1 || echo "Timed out, ignoring \"docker ps --all --no-truc output \" "
+    timeout 75 docker images > "${COLLECT_DIR}"/docker/docker-images.txt 2>&1 || echo "Timed out, ignoring \"docker images output \" "
+    timeout 75 docker version > "${COLLECT_DIR}"/docker/docker-version.txt 2>&1 || echo "Timed out, ignoring \"docker version output \" "
 
     ok
 
@@ -443,10 +387,9 @@ get_docker_info()
 get_containers_info()
 {
   try "inspect running Docker containers and gather container data"
-    mkdir -p ${info_system}/docker
 
-    for i in `docker ps -q`; do
-      docker inspect $i > $info_system/docker/container-$i.txt 2>&1
+    for i in $(docker ps -q); do
+      timeout 75 docker inspect "${i}" > "${COLLECT_DIR}"/docker/container-"${i}".txt 2>&1
     done
 
     ok
@@ -456,15 +399,15 @@ enable_docker_debug()
 {
   try "enable debug mode for the Docker daemon"
 
-  case "${os_name}" in
-    amazon)
+  case "${PACKAGE_TYPE}" in
+    rpm)
 
-      if [ -e /etc/sysconfig/docker ] && grep -q "^\s*OPTIONS=\"-D" /etc/sysconfig/docker
+      if [[ -e /etc/sysconfig/docker ]] && grep -q "^\s*OPTIONS=\"-D" /etc/sysconfig/docker
       then
         info "Debug mode is already enabled."
       else
 
-        if [ -e /etc/sysconfig/docker ]; then
+        if [[ -e /etc/sysconfig/docker ]]; then
           echo "OPTIONS=\"-D \$OPTIONS\"" >> /etc/sysconfig/docker
 
           try "restart Docker daemon to enable debug mode"
@@ -481,25 +424,20 @@ enable_docker_debug()
   esac
 }
 
-# --------------------------------------------------------------------------------------------
+parse_options "$@"
 
-parse_options $*
-
-[ -z "${mode}" ] && mode="brief"
+if [[ -z "${mode}" ]]; then
+ mode="collect"
+fi
 
 case "${mode}" in
-  brief)
-    cleanup
-    collect_brief
+  collect)
+    collect
     pack
-    ;;
-  debug)
     cleanup
-    collect_brief
-    enable_debug
-    pack
     ;;
-  debug-only)
+  enable_debug)
+    get_pkgtype
     enable_debug
     ;;
   *)
