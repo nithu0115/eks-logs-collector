@@ -1,7 +1,7 @@
 #!/bin/bash
-# Author: Nithish Kumar
-# - Collects Docker daemon and Amazon EKS daemon set information on Amazon Linux,
-#   Redhat 7, Debian 8.
+# Author: Nithish Kumar and Jason Swindle
+# - Collects Docker daemon and Amazon EKS daemon set information on systemd,
+#   and non systemd enabled systems..
 # - Collects general operating system logs.
 # - Optional ability to enable debug mode for the Docker daemon
 
@@ -15,6 +15,26 @@ DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
 INSTANCE_ID=""
 INIT_TYPE=""
 PACKAGE_TYPE=""
+
+COMMON_DIRECTORIES=(
+  kernel
+  system
+  docker
+  storage
+  var_log
+  eks # eks
+)
+
+COMMON_LOGS=(
+  syslog
+  messages
+  aws-routed-eni # eks
+  containers # eks
+  pods # eks
+  cloud-init.log
+  cloud-init-output.log
+  audit
+)
 
 help()
 {
@@ -111,7 +131,9 @@ is_root()
 }
 
 create_directories() {
-    mkdir -p "${COLLECT_DIR}"/{kernel,system,eks,docker,storage,var_log}
+  for directory in ${COMMON_DIRECTORIES[*]} ; do
+    mkdir -p "${COLLECT_DIR}"/"${directory}"
+  done  
 }
 
 instance_metadata() {
@@ -243,12 +265,20 @@ get_iptables_info()
   ok
 }
 
+create_directories() {
+  for directory in ${COMMON_DIRECTORIES[*]}; do
+    mkdir -p "${COLLECT_DIR}"/"${directory}"
+  done  
+}
+
 get_common_logs()
 {
   try "collect common operating system logs"
 
-  for entry in syslog messages aws-routed-eni containers pods cloud-init.log cloud-init-output.log audit; do
-    [[ -e "/var/log/${entry}" ]] && cp -fR /var/log/${entry} "${COLLECT_DIR}"/var_log/
+  for entry in ${COMMON_LOGS[*]}; do
+    if [[ -e "/var/log/${entry}" ]]; then
+      cp --force --recursive /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
+    fi
   done
 
   ok
@@ -259,7 +289,7 @@ get_kernel_logs()
   try "collect kernel logs"
 
   if [[ -e "/var/log/dmesg" ]]; then
-      cp -f /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
+      cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
   dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
 }
@@ -274,7 +304,9 @@ get_docker_logs()
       ;;
     other)
       for entry in docker upstart/docker; do
-        [[ -e "/var/log/${entry}" ]] && cp --force --recursive /var/log/${entry} "${COLLECT_DIR}"/docker/
+        if [[ -e "/var/log/${entry}" ]]; then
+          cp --force --recursive /var/log/"${entry}" "${COLLECT_DIR}"/docker/
+        fi
       done
       ;;
     *)
