@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Author: Nithish Kumar and Jason Swindle
 # - Collects Docker daemon and Amazon EKS daemon set information on systemd,
 #   and non systemd enabled systems..
