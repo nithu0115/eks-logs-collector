@@ -292,6 +292,8 @@ get_kernel_logs()
       cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
   dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
+
+  ok
 }
 
 get_docker_logs()
@@ -323,14 +325,15 @@ get_eks_logs_and_configfiles()
 
   case "${INIT_TYPE}" in
     systemd)
-      /bin/journalctl -u kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubelet
-      /bin/journalctl -u kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubeproxy
+      timeout 75 journalctl -u kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubelet
+      timeout 75 journalctl -u kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubeproxy
+      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/eks/kubeconfig
 
       for entry in kubelet kube-proxy; do
-        [[ -e "/etc/systemd/system/${entry}.service" ]] && cp -fR "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/eks/
+        if [[ -e "/etc/systemd/system/${entry}.service" ]]; then
+          cp --force --recursive "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/eks/
+        fi
       done
-
-      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/eks/kubeconfig
       ;;
     *)
       warning "The current operating system is not supported."
