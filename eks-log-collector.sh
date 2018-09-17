@@ -36,8 +36,7 @@ COMMON_LOGS=(
   audit
 )
 
-help()
-{
+help() {
   echo "USAGE: ${PROGRAM_NAME} --mode=collect|enable_debug"
   echo "       ${PROGRAM_NAME} --help"
   echo ""
@@ -52,8 +51,7 @@ help()
   echo "     enable_debug  Enables debug mode for the Docker daemon"
 }
 
-systemd_check()
-{
+systemd_check() {
   if [[ -L "/sbin/init" ]]; then
       INIT_TYPE="systemd"
     else
@@ -84,13 +82,11 @@ parse_options() {
   done
 }
 
-ok()
-{
+ok() {
   echo
 }
 
-info()
-{
+info() {
   echo "$*"
 }
 
@@ -113,14 +109,12 @@ failed() {
   echo "failed: $reason"
 }
 
-die()
-{
+die() {
   echo "ERROR: $*.. exiting..."
   exit 1
 }
 
-is_root()
-{
+is_root() {
   try "check if the script is running as root"
 
   if [[ "$(id -u)" -ne 0 ]]; then
@@ -154,8 +148,7 @@ instance_metadata() {
   ok
 }
 
-is_diskfull()
-{
+is_diskfull() {
   try "check disk space usage"
 
   local threshold
@@ -170,8 +163,7 @@ is_diskfull()
   ok
 }
 
-cleanup()
-{
+cleanup() {
   rm -rf "${COLLECT_DIR}" >/dev/null 2>&1
 }
 
@@ -204,8 +196,7 @@ enable_debug() {
   enable_docker_debug
 }
 
-pack()
-{
+pack() {
   try "archive gathered log information"
 
   local TAR_BIN
@@ -220,8 +211,7 @@ pack()
   ok
 }
 
-get_mounts_info()
-{
+get_mounts_info() {
   try "get mount points and volume information"
   mount > "${COLLECT_DIR}"/storage/mounts.txt
   echo >> "${COLLECT_DIR}"/storage/mounts.txt
@@ -236,8 +226,7 @@ get_mounts_info()
   ok
 }
 
-get_selinux_info()
-{
+get_selinux_info() {
   try "check SELinux status"
 
   local GETENFORCE_BIN
@@ -254,8 +243,7 @@ get_selinux_info()
   ok
 }
 
-get_iptables_info()
-{
+get_iptables_info() {
   try "get iptables list"
 
   /sbin/iptables -nvL -t filter > "${COLLECT_DIR}"/system/iptables-filter.txt
@@ -271,8 +259,7 @@ create_directories() {
   done  
 }
 
-get_common_logs()
-{
+get_common_logs() {
   try "collect common operating system logs"
 
   for entry in ${COMMON_LOGS[*]}; do
@@ -284,8 +271,7 @@ get_common_logs()
   ok
 }
 
-get_kernel_logs()
-{
+get_kernel_logs() {
   try "collect kernel logs"
 
   if [[ -e "/var/log/dmesg" ]]; then
@@ -296,8 +282,7 @@ get_kernel_logs()
   ok
 }
 
-get_docker_logs()
-{
+get_docker_logs() {
   try "collect Docker daemon logs"
 
   case "${INIT_TYPE}" in
@@ -319,8 +304,7 @@ get_docker_logs()
   ok
 }
 
-get_eks_logs_and_configfiles()
-{
+get_eks_logs_and_configfiles() {
   try "collect Amazon EKS container agent logs"
 
   case "${INIT_TYPE}" in
@@ -343,8 +327,7 @@ get_eks_logs_and_configfiles()
   ok
 }
 
-get_pkgtype()
-{
+get_pkgtype() {
   try "detect package manager"
 
   if [[ "$(command -v rpm )" ]]; then
@@ -358,8 +341,7 @@ get_pkgtype()
   ok
 }
 
-get_pkglist()
-{
+get_pkglist() {
   try "detect installed packages"
 
   case "${PACKAGE_TYPE}" in
@@ -377,8 +359,7 @@ get_pkglist()
   ok
 }
 
-get_system_services()
-{
+get_system_services() {
   try "detect active system services list"
 
   case "${INIT_TYPE}" in
@@ -402,8 +383,7 @@ get_system_services()
   ok
 }
 
-get_docker_info()
-{
+get_docker_info() {
   try "gather Docker daemon information"
 
   if [[ "$(pgrep dockerd)" -ne 0 ]]; then
@@ -419,8 +399,7 @@ get_docker_info()
   fi
 }
 
-get_containers_info()
-{
+get_containers_info() {
   try "inspect running Docker containers and gather container data"
 
     for i in $(docker ps -q); do
@@ -430,8 +409,7 @@ get_containers_info()
     ok
 }
 
-enable_docker_debug()
-{
+enable_docker_debug() {
   try "enable debug mode for the Docker daemon"
 
   case "${PACKAGE_TYPE}" in
