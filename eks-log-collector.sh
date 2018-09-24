@@ -205,7 +205,7 @@ pack() {
   if [[ -z "${TAR_BIN}" ]]; then
       warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
     else
-      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/ekslogsbundle_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
+      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
   fi
 
   ok
