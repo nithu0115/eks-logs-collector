@@ -21,7 +21,7 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-PROGRAM_VERSION="0.0.0"
+PROGRAM_VERSION="0.0.1"
 PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
 PROGRAM_NAME="$(basename "$0" .sh)" 
 COLLECT_DIR="/tmp/${PROGRAM_NAME}"
