@@ -1,14 +1,28 @@
 #!/usr/bin/env bash
-# Author: Nithish Kumar and Jason Swindle
-# - Collects Docker daemon and Amazon EKS daemon set information on systemd,
-#   and non systemd enabled systems..
-# - Collects general operating system logs.
-# - Optional ability to enable debug mode for the Docker daemon
+
+# Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"). You may
+# not use this file except in compliance with the License. A copy of the
+# License is located at
+#
+#       http://aws.amazon.com/apache2.0/
+#
+# or in the "license" file accompanying this file. This file is distributed
+# on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+# express or implied. See the License for the specific language governing
+# permissions and limitations under the License.
+#
+# This script generates a file in go with the license contents as a constant
+
+# Set language to C to make sorting consistent among different environments.
 
 export LANG="C"
 export LC_ALL="C"
 
 # Global options
+PROGRAM_VERSION="0.0.0"
+PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
 PROGRAM_NAME="$(basename "$0" .sh)" 
 COLLECT_DIR="/tmp/${PROGRAM_NAME}"
 DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
@@ -22,7 +36,11 @@ COMMON_DIRECTORIES=(
   docker
   storage
   var_log
-  eks # eks
+  networking
+  ipamd # eks
+  sysctls # eks
+  kubelet # eks
+  cni # eks
 )
 
 COMMON_LOGS=(
@@ -34,6 +52,29 @@ COMMON_LOGS=(
   cloud-init.log
   cloud-init-output.log
   audit
+)
+
+# L-IPAMD introspection data points
+IPAMD_DATA=(
+  enis
+  pods
+  networkutils-env-settings
+  ipamd-env-settings
+  eni-configs
+)
+
+# Sysctls datapoints
+STSCTLS_DATA=(
+  all
+  default
+  eth0
+)
+
+# Kubelet datapoints
+KUBELET_DATA=(
+  pods
+  stats
+  eth0
 )
 
 help() {
@@ -49,6 +90,10 @@ help() {
   echo "     collect       Gathers basic operating system, Docker daemon, and Amazon"
   echo "                 EKS related config files and logs. This is the default mode."
   echo "     enable_debug  Enables debug mode for the Docker daemon"
+}
+
+version_output() {
+  echo -e "\n\nThis is version ${PROGRAM_VERSION}. New versions can be found at ${PROGRAM_SOURCE}\n\n"
 }
 
 systemd_check() {
@@ -125,8 +170,8 @@ is_root() {
 }
 
 create_directories() {
-  for directory in ${COMMON_DIRECTORIES[*]} ; do
-    mkdir -p "${COLLECT_DIR}"/"${directory}"
+  for directory in ${COMMON_DIRECTORIES[*]}; do
+    mkdir --parents "${COLLECT_DIR}"/"${directory}"
   done  
 }
 
@@ -141,7 +186,7 @@ instance_metadata() {
       INSTANCE_ID=$(hostname)
       echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
     else
-      INSTANCE_ID=$(curl --max-time 3 -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+      INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
       echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
   fi
 
@@ -154,7 +199,7 @@ is_diskfull() {
   local threshold
   local result
   threshold=1500000
-  result=$(df / | grep -v "Filesystem" | awk '{ print $4 }')
+  result=$(df / | grep --invert-match "Filesystem" | awk '{ print $4 }')
 
   if [[ "${result}" -lt "${threshold}" ]]; then
     die "Less than $((threshold>>10))MB, please ensure adequate disk space to collect and store the log files."
@@ -164,10 +209,11 @@ is_diskfull() {
 }
 
 cleanup() {
-  rm -rf "${COLLECT_DIR}" >/dev/null 2>&1
+  rm --recursive --force "${COLLECT_DIR}" >/dev/null 2>&1
 }
 
 init() {
+  version_output
   is_root
   create_directories
   instance_metadata
@@ -187,6 +233,11 @@ collect() {
   get_system_services
   get_docker_info
   get_eks_logs_and_configfiles
+  get_ipamd_info
+  get_sysctls_info
+  get_networking_info
+  get_cni_config
+  get_kubelet_info
   get_containers_info
   get_docker_logs
 }
@@ -205,7 +256,7 @@ pack() {
   if [[ -z "${TAR_BIN}" ]]; then
       warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
     else
-      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
+      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)"_"${PROGRAM_VERSION}".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
   fi
 
   ok
@@ -215,7 +266,8 @@ get_mounts_info() {
   try "get mount points and volume information"
   mount > "${COLLECT_DIR}"/storage/mounts.txt
   echo >> "${COLLECT_DIR}"/storage/mounts.txt
-  df -h >> "${COLLECT_DIR}"/storage/mounts.txt
+  df --human-readable >> "${COLLECT_DIR}"/storage/mounts.txt
+  lsblk > "${COLLECT_DIR}"/storage/lsblk.txt
 
   if [[ -e /sbin/lvs ]]; then
     lvs > "${COLLECT_DIR}"/storage/lvs.txt
@@ -246,16 +298,16 @@ get_selinux_info() {
 get_iptables_info() {
   try "get iptables list"
 
-  /sbin/iptables -nvL -t filter > "${COLLECT_DIR}"/system/iptables-filter.txt
-  /sbin/iptables -nvL -t nat  > "${COLLECT_DIR}"/system/iptables-nat.txt
-  iptables-save > "${COLLECT_DIR}"/system/iptables-save.out
+  iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
+  iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
+  iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
 
   ok
 }
 
 create_directories() {
   for directory in ${COMMON_DIRECTORIES[*]}; do
-    mkdir -p "${COLLECT_DIR}"/"${directory}"
+    mkdir --parents "${COLLECT_DIR}"/"${directory}"
   done  
 }
 
@@ -287,7 +339,7 @@ get_docker_logs() {
 
   case "${INIT_TYPE}" in
     systemd)
-      journalctl -u docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
+      journalctl --unit=docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
       ;;
     other)
       for entry in docker upstart/docker; do
@@ -309,13 +361,13 @@ get_eks_logs_and_configfiles() {
 
   case "${INIT_TYPE}" in
     systemd)
-      timeout 75 journalctl -u kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubelet
-      timeout 75 journalctl -u kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/eks/kubeproxy
-      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/eks/kubeconfig
+      timeout 75 journalctl --unit=kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubelet.log
+      timeout 75 journalctl --unit=kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubeproxy.log
+      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
       for entry in kubelet kube-proxy; do
         if [[ -e "/etc/systemd/system/${entry}.service" ]]; then
-          cp --force --recursive "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/eks/
+          cp --force --recursive "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/kubelet/
         fi
       done
       ;;
@@ -323,6 +375,63 @@ get_eks_logs_and_configfiles() {
       warning "The current operating system is not supported."
       ;;
   esac
+
+  ok
+}
+
+get_ipamd_info() {
+  try "collect L-IPAMD information"
+
+  for entry in ${IPAMD_DATA[*]}; do
+      curl --max-time 3 --silent http://localhost:61678/v1/"${entry}" >> "${COLLECT_DIR}"/ipamd/"${entry}".txt
+  done
+
+  curl --max-time 3 --silent http://localhost:61678/metrics > "${COLLECT_DIR}"/ipamd/metrics.txt 2>&1
+
+  ok
+}
+
+get_sysctls_info() {
+  try "collect sysctls information"
+
+  for entry in ${STSCTLS_DATA[*]}; do
+      cat /proc/sys/net/ipv4/conf/"${entry}"/rp_filter >> "${COLLECT_DIR}"/sysctls/"${entry}".txt
+  done 
+
+  ok
+}
+
+get_networking_info() {
+  try "collect networking infomation"
+
+  # ifconfig
+  timeout 75 ifconfig > "${COLLECT_DIR}"/networking/ifconfig.txt
+
+  # ip rule show
+  timeout 75 ip rule show > "${COLLECT_DIR}"/networking/iprule.txt
+  timeout 75 ip route show table all >> "${COLLECT_DIR}"/networking/iproute.txt
+
+  ok
+}
+
+get_cni_config() {
+  try "collect CNI configuration information"
+
+    if [[ -e "/etc/cni/net.d/" ]]; then
+        cp --force --recursive /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
+      else
+        touch "${COLLECT_DIR}"/cni/MISSING_FOLDER
+    fi  
+
+  ok
+}
+
+get_kubelet_info() {
+  try "collect Kubelet information"
+
+  for entry in ${KUBELET_DATA[*]}; do
+      curl --max-time 3 --silent http://localhost:10255/"${entry}" >> "${COLLECT_DIR}"/kubelet/"${entry}".json
+  done 
 
   ok
 }
