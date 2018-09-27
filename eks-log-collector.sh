@@ -152,13 +152,9 @@ die() {
 }
 
 is_root() {
-  try "check if the script is running as root"
-
   if [[ "$(id -u)" -ne 0 ]]; then
     die "This script must be run as root!"
   fi
-
-  ok
 }
 
 create_directories() {
@@ -173,8 +169,6 @@ create_directories() {
 }
 
 instance_metadata() {
-  try "resolve instance-id"
-
   local curl_bin
   curl_bin="$(command -v curl)"
 
@@ -186,12 +180,10 @@ instance_metadata() {
       INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
       echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
   fi
-
-  ok
 }
 
 is_diskfull() {
-  try "check disk space usage"
+  try "collect disk space usage"
 
   local threshold
   local result
@@ -245,7 +237,7 @@ enable_debug() {
 }
 
 pack() {
-  try "archive gathered log information"
+  try "archive gathered information"
 
   local TAR_BIN
   TAR_BIN="$(command -v tar)"
@@ -268,7 +260,7 @@ finished() {
 }
 
 get_mounts_info() {
-  try "get mount points and volume information"
+  try "collect mount points and volume information"
   mount > "${COLLECT_DIR}"/storage/mounts.txt
   echo >> "${COLLECT_DIR}"/storage/mounts.txt
   df --human-readable >> "${COLLECT_DIR}"/storage/mounts.txt
@@ -284,7 +276,7 @@ get_mounts_info() {
 }
 
 get_selinux_info() {
-  try "check SELinux status"
+  try "collect SELinux status"
 
   local GETENFORCE_BIN
   local SELINUX_STATUS
@@ -301,7 +293,7 @@ get_selinux_info() {
 }
 
 get_iptables_info() {
-  try "get iptables list"
+  try "collect iptables information"
 
   iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
   iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
@@ -356,7 +348,7 @@ get_docker_logs() {
 }
 
 get_eks_logs_and_configfiles() {
-  try "collect Amazon EKS container agent logs"
+  try "collect kubelet information"
 
   case "${INIT_TYPE}" in
     systemd)
@@ -434,8 +426,6 @@ get_kubelet_info() {
 }
 
 get_pkgtype() {
-  try "detect package manager"
-
   if [[ "$(command -v rpm )" ]]; then
     PACKAGE_TYPE=rpm
   elif [[ "$(command -v deb )" ]]; then
@@ -443,12 +433,10 @@ get_pkgtype() {
   else
     PACKAGE_TYPE='unknown'
   fi
-
-  ok
 }
 
 get_pkglist() {
-  try "detect installed packages"
+  try "collect installed packages"
 
   case "${PACKAGE_TYPE}" in
     rpm)
@@ -466,7 +454,7 @@ get_pkglist() {
 }
 
 get_system_services() {
-  try "detect active system services list"
+  try "collect active system services"
 
   case "${INIT_TYPE}" in
     systemd)
@@ -490,7 +478,7 @@ get_system_services() {
 }
 
 get_docker_info() {
-  try "gather Docker daemon information"
+  try "collect Docker daemon information"
 
   if [[ "$(pgrep dockerd)" -ne 0 ]]; then
     timeout 75 docker info > "${COLLECT_DIR}"/docker/docker-info.txt 2>&1 || echo "Timed out, ignoring \"docker info output \" "
@@ -501,18 +489,25 @@ get_docker_info() {
     ok
 
   else
-    die "The Docker daemon is not running."
+    warning "The Docker daemon is not running."
   fi
 }
 
 get_containers_info() {
-  try "inspect running Docker containers and gather container data"
+  try "collect running Docker containers and gather container data"
 
+  if [[ "$(pgrep dockerd)" -ne 0 ]]; then
     for i in $(docker ps -q); do
       timeout 75 docker inspect "${i}" > "${COLLECT_DIR}"/docker/container-"${i}".txt 2>&1
     done
 
     ok
+
+    else
+      warning "The Docker daemon is not running."
+  fi
+
+  ok
 }
 
 enable_docker_debug() {
