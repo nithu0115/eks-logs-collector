@@ -23,7 +23,8 @@ export LC_ALL="C"
 # Global options
 PROGRAM_VERSION="0.0.1"
 PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
-PROGRAM_NAME="$(basename "$0" .sh)" 
+PROGRAM_NAME="$(basename "$0" .sh)"
+PROGRAM_DIR="/opt/log-collector"
 COLLECT_DIR="/tmp/${PROGRAM_NAME}"
 DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
 INSTANCE_ID=""
@@ -93,7 +94,7 @@ help() {
 }
 
 version_output() {
-  echo -e "\n\nThis is version ${PROGRAM_VERSION}. New versions can be found at ${PROGRAM_SOURCE}\n\n"
+  echo -e "\n\tThis is version ${PROGRAM_VERSION}. New versions can be found at ${PROGRAM_SOURCE}\n"
 }
 
 systemd_check() {
@@ -142,16 +143,7 @@ try() {
 
 warning() {
   local reason=$*
-  echo "Warning: $reason "
-}
-
-fail() {
-  echo "failed"
-}
-
-failed() {
-  local reason=$*
-  echo "failed: $reason"
+  echo -e "\n\n\tWarning: $reason "
 }
 
 die() {
@@ -170,9 +162,14 @@ is_root() {
 }
 
 create_directories() {
+    # Make sure the directory the script lives in is there. Not an issue if
+  # the EKS AMI is used, as it will have it.
+  mkdir --parents "${PROGRAM_DIR}"
+  
+  # Common directors creation 
   for directory in ${COMMON_DIRECTORIES[*]}; do
     mkdir --parents "${COLLECT_DIR}"/"${directory}"
-  done  
+  done
 }
 
 instance_metadata() {
@@ -256,10 +253,18 @@ pack() {
   if [[ -z "${TAR_BIN}" ]]; then
       warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
     else
-      ${TAR_BIN} --create --verbose --gzip --file "${HOME}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)"_"${PROGRAM_VERSION}".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
+      ${TAR_BIN} --create --verbose --gzip --file "${PROGRAM_DIR}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)"_"${PROGRAM_VERSION}".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
   fi
 
   ok
+}
+
+finished() {
+  if [[ "${mode}" == "collect" ]]; then
+      echo -e "\n\tDone... your bundled logs are located in ${PROGRAM_DIR}/eks_${INSTANCE_ID}_$(date --utc +%Y-%m-%d_%H%M-%Z)_${PROGRAM_VERSION}.tar.gz\n"
+    else
+      echo -e "\n\tDone... debug is enabled\n"
+  fi
 }
 
 get_mounts_info() {
@@ -303,12 +308,6 @@ get_iptables_info() {
   iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
 
   ok
-}
-
-create_directories() {
-  for directory in ${COMMON_DIRECTORIES[*]}; do
-    mkdir --parents "${COLLECT_DIR}"/"${directory}"
-  done  
 }
 
 get_common_logs() {
@@ -419,8 +418,6 @@ get_cni_config() {
 
     if [[ -e "/etc/cni/net.d/" ]]; then
         cp --force --recursive /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
-      else
-        touch "${COLLECT_DIR}"/cni/MISSING_FOLDER
     fi  
 
   ok
@@ -557,10 +554,12 @@ case "${mode}" in
     collect
     pack
     cleanup
+    finished
     ;;
   enable_debug)
     get_pkgtype
     enable_debug
+    finished
     ;;
   *)
     help && exit 1
