@@ -156,10 +156,8 @@ is_root() {
 
 check_required_utils() {
   for utils in ${REQUIRED_UTILS[*]}; do
-    command -v "${utils}" >/dev/null
-
     # if exit code of "command -v" not equal to 0, fail
-    if [[ "$?" -ne 0 ]]; then
+    if ! command -v "${utils}" >/dev/null 2>&1; then
       die "Application \"${utils}\" is missing, please install \"${utils}\" as this script requires it, and will not function without it."
     fi
   done
@@ -280,13 +278,10 @@ get_mounts_info() {
 get_selinux_info() {
   try "collect SELinux status"
 
-  local SELINUX_STATUS
-  SELINUX_STATUS="$(command -v getenforce)" 2>/dev/null
-  
-  if [[ -z "${SELINUX_STATUS}" ]]; then
+  if ! command -v getenforce >/dev/null 2>&1; then
       echo -e "SELinux mode:\n\t Not installed" > "${COLLECT_DIR}"/system/selinux.txt
     else
-      echo -e "SELinux mode:\n\t ${SELINUX_STATUS}" > "${COLLECT_DIR}"/system/selinux.txt
+      echo -e "SELinux mode:\n\t $(getenforce)" > "${COLLECT_DIR}"/system/selinux.txt
   fi
 
   ok
