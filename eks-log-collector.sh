@@ -21,7 +21,7 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-PROGRAM_VERSION="0.0.1"
+PROGRAM_VERSION="0.0.3"
 PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
 PROGRAM_NAME="$(basename "$0" .sh)"
 PROGRAM_DIR="/opt/log-collector"
@@ -30,6 +30,19 @@ DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
 INSTANCE_ID=""
 INIT_TYPE=""
 PACKAGE_TYPE=""
+
+REQUIRED_UTILS=(
+  timeout
+  curl
+  tar
+  date
+  mkdir
+  iptables
+  iptables-save
+  grep
+  awk
+  df
+)
 
 COMMON_DIRECTORIES=(
   kernel
@@ -93,18 +106,6 @@ help() {
   echo "     enable_debug  Enables debug mode for the Docker daemon"
 }
 
-version_output() {
-  echo -e "\n\tThis is version ${PROGRAM_VERSION}. New versions can be found at ${PROGRAM_SOURCE}\n"
-}
-
-systemd_check() {
-  if [[ -L "/sbin/init" ]]; then
-      INIT_TYPE="systemd"
-    else
-      INIT_TYPE="other"
-    fi
-}
-
 parse_options() {
   local count="$#"
 
@@ -132,10 +133,6 @@ ok() {
   echo
 }
 
-info() {
-  echo "$*"
-}
-
 try() {
   local action=$*
   echo -n "Trying to $action... "
@@ -147,7 +144,7 @@ warning() {
 }
 
 die() {
-  echo "ERROR: $*.. exiting..."
+  echo "Fatal Error! $* Exiting!"
   exit 1
 }
 
@@ -157,8 +154,31 @@ is_root() {
   fi
 }
 
+check_required_utils() {
+  for utils in ${REQUIRED_UTILS[*]}; do
+    command -v "${utils}" >/dev/null
+
+    # if exit code of "command -v" not equal to 0, fail
+    if [[ "$?" -ne 0 ]]; then
+      die "Application \"${utils}\" is missing, please install \"${utils}\" as this script requires it, and will not function without it."
+    fi
+  done
+}
+
+version_output() {
+  echo -e "\n\tThis is version ${PROGRAM_VERSION}. New versions can be found at ${PROGRAM_SOURCE}\n"
+}
+
+systemd_check() {
+  if [[ -L "/sbin/init" ]]; then
+      INIT_TYPE="systemd"
+    else
+      INIT_TYPE="other"
+  fi
+}
+
 create_directories() {
-    # Make sure the directory the script lives in is there. Not an issue if
+  # Make sure the directory the script lives in is there. Not an issue if
   # the EKS AMI is used, as it will have it.
   mkdir --parents "${PROGRAM_DIR}"
   
@@ -168,33 +188,23 @@ create_directories() {
   done
 }
 
-instance_metadata() {
-  local curl_bin
-  curl_bin="$(command -v curl)"
-
-  if [[ -z "${curl_bin}" ]]; then
-      warning "Curl not found, please install curl. You can still view the logs in the collect folder."
-      INSTANCE_ID=$(hostname)
-      echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
-    else
-      INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
-      echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
-  fi
+get_instance_metadata() {
+  INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+  echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
 }
 
 is_diskfull() {
-  try "collect disk space usage"
-
   local threshold
   local result
+
+  # 1.5GB in KB
   threshold=1500000
   result=$(df / | grep --invert-match "Filesystem" | awk '{ print $4 }')
 
-  if [[ "${result}" -lt "${threshold}" ]]; then
-    die "Less than $((threshold>>10))MB, please ensure adequate disk space to collect and store the log files."
+  # If "result" is less than or equal to "threshold", fail.
+  if [[ "${result}" -le "${threshold}" ]]; then
+    die "Free space on root volume is less than or equal to $((threshold>>10))MB, please ensure adequate disk space to collect and store the log files."
   fi
-
-  ok
 }
 
 cleanup() {
@@ -202,22 +212,23 @@ cleanup() {
 }
 
 init() {
+  check_required_utils
   version_output
   is_root
-  create_directories
-  instance_metadata
   systemd_check
+  get_pkgtype
 }
 
 collect() {
   init
   is_diskfull
+  create_directories
+  get_instance_metadata
   get_common_logs
   get_kernel_logs
   get_mounts_info
   get_selinux_info
   get_iptables_info
-  get_pkgtype
   get_pkglist
   get_system_services
   get_docker_info
@@ -239,20 +250,14 @@ enable_debug() {
 pack() {
   try "archive gathered information"
 
-  local TAR_BIN
-  TAR_BIN="$(command -v tar)"
-
-  if [[ -z "${TAR_BIN}" ]]; then
-      warning "TAR archiver not found, please install a TAR archiver to create the collection archive. You can still view the logs in the collect folder."
-    else
-      ${TAR_BIN} --create --verbose --gzip --file "${PROGRAM_DIR}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)"_"${PROGRAM_VERSION}".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
-  fi
+  tar --create --verbose --gzip --file "${PROGRAM_DIR}"/eks_"${INSTANCE_ID}"_"$(date --utc +%Y-%m-%d_%H%M-%Z)"_"${PROGRAM_VERSION}".tar.gz --directory="${COLLECT_DIR}" . > /dev/null 2>&1
 
   ok
 }
 
 finished() {
   if [[ "${mode}" == "collect" ]]; then
+      cleanup
       echo -e "\n\tDone... your bundled logs are located in ${PROGRAM_DIR}/eks_${INSTANCE_ID}_$(date --utc +%Y-%m-%d_%H%M-%Z)_${PROGRAM_VERSION}.tar.gz\n"
     else
       echo -e "\n\tDone... debug is enabled\n"
@@ -265,12 +270,9 @@ get_mounts_info() {
   echo >> "${COLLECT_DIR}"/storage/mounts.txt
   df --human-readable >> "${COLLECT_DIR}"/storage/mounts.txt
   lsblk > "${COLLECT_DIR}"/storage/lsblk.txt
-
-  if [[ -e /sbin/lvs ]]; then
-    lvs > "${COLLECT_DIR}"/storage/lvs.txt
-    pvs > "${COLLECT_DIR}"/storage/pvs.txt
-    vgs > "${COLLECT_DIR}"/storage/vgs.txt
-  fi
+  lvs > "${COLLECT_DIR}"/storage/lvs.txt
+  pvs > "${COLLECT_DIR}"/storage/pvs.txt
+  vgs > "${COLLECT_DIR}"/storage/vgs.txt
 
   ok
 }
@@ -278,10 +280,8 @@ get_mounts_info() {
 get_selinux_info() {
   try "collect SELinux status"
 
-  local GETENFORCE_BIN
   local SELINUX_STATUS
-  GETENFORCE_BIN="$(command -v getenforce)"
-  SELINUX_STATUS="$(${GETENFORCE_BIN})" 2>/dev/null
+  SELINUX_STATUS="$(command -v getenforce)" 2>/dev/null
   
   if [[ -z "${SELINUX_STATUS}" ]]; then
       echo -e "SELinux mode:\n\t Not installed" > "${COLLECT_DIR}"/system/selinux.txt
@@ -461,9 +461,9 @@ get_system_services() {
       systemctl list-units > "${COLLECT_DIR}"/system/services.txt 2>&1
       ;;
     other)
-      /sbin/initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > "${COLLECT_DIR}"/system/services.txt 2>&1
-      printf "\n\n\n\n" >> "${COLLECT_DIR}"/services.txt 2>&1
-      /usr/bin/service --status-all >> "${COLLECT_DIR}"/services.txt 2>&1
+      initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > "${COLLECT_DIR}"/system/services.txt 2>&1
+      printf "\n\n\n\n" >> "${COLLECT_DIR}"/system/services.txt 2>&1
+      service --status-all >> "${COLLECT_DIR}"/system/services.txt 2>&1
       ;;
     *)
       warning "Unable to determine active services."
@@ -481,10 +481,10 @@ get_docker_info() {
   try "collect Docker daemon information"
 
   if [[ "$(pgrep dockerd)" -ne 0 ]]; then
-    timeout 75 docker info > "${COLLECT_DIR}"/docker/docker-info.txt 2>&1 || echo "Timed out, ignoring \"docker info output \" "
-    timeout 75 docker ps --all --no-trunc > "${COLLECT_DIR}"/docker/docker-ps.txt 2>&1 || echo "Timed out, ignoring \"docker ps --all --no-truc output \" "
-    timeout 75 docker images > "${COLLECT_DIR}"/docker/docker-images.txt 2>&1 || echo "Timed out, ignoring \"docker images output \" "
-    timeout 75 docker version > "${COLLECT_DIR}"/docker/docker-version.txt 2>&1 || echo "Timed out, ignoring \"docker version output \" "
+    timeout 75 docker info > "${COLLECT_DIR}"/docker/docker-info.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker info output \" "
+    timeout 75 docker ps --all --no-trunc > "${COLLECT_DIR}"/docker/docker-ps.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker ps --all --no-truc output \" "
+    timeout 75 docker images > "${COLLECT_DIR}"/docker/docker-images.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker images output \" "
+    timeout 75 docker version > "${COLLECT_DIR}"/docker/docker-version.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker version output \" "
 
     ok
 
@@ -518,14 +518,14 @@ enable_docker_debug() {
 
       if [[ -e /etc/sysconfig/docker ]] && grep -q "^\s*OPTIONS=\"-D" /etc/sysconfig/docker
       then
-        info "Debug mode is already enabled."
+        echo "Debug mode is already enabled."
       else
 
         if [[ -e /etc/sysconfig/docker ]]; then
           echo "OPTIONS=\"-D \$OPTIONS\"" >> /etc/sysconfig/docker
 
           try "restart Docker daemon to enable debug mode"
-          /sbin/service docker restart
+          service docker restart
         fi
 
         ok
@@ -548,11 +548,9 @@ case "${mode}" in
   collect)
     collect
     pack
-    cleanup
     finished
     ;;
   enable_debug)
-    get_pkgtype
     enable_debug
     finished
     ;;
