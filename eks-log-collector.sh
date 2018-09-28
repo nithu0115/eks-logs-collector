@@ -21,12 +21,12 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-PROGRAM_VERSION="0.0.3"
-PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
-PROGRAM_NAME="$(basename "$0" .sh)"
-PROGRAM_DIR="/opt/log-collector"
-COLLECT_DIR="/tmp/${PROGRAM_NAME}"
-DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
+readonly PROGRAM_VERSION="0.0.3"
+readonly PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
+readonly PROGRAM_NAME="$(basename "$0" .sh)"
+readonly PROGRAM_DIR="/opt/log-collector"
+readonly COLLECT_DIR="/tmp/${PROGRAM_NAME}"
+readonly DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
 INSTANCE_ID=""
 INIT_TYPE=""
 PACKAGE_TYPE=""
@@ -65,7 +65,6 @@ COMMON_LOGS=(
   pods # eks
   cloud-init.log
   cloud-init-output.log
-  audit
 )
 
 # L-IPAMD introspection data points
@@ -187,7 +186,7 @@ create_directories() {
 }
 
 get_instance_metadata() {
-  INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+  readonly INSTANCE_ID=$(curl --max-time 3 --silent http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
   echo "${INSTANCE_ID}" > "${COLLECT_DIR}"/system/instance-id.txt
 }
 
@@ -223,7 +222,7 @@ collect() {
   create_directories
   get_instance_metadata
   get_common_logs
-  get_kernel_logs
+  get_kernel_info
   get_mounts_info
   get_selinux_info
   get_iptables_info
@@ -309,13 +308,14 @@ get_common_logs() {
   ok
 }
 
-get_kernel_logs() {
+get_kernel_info() {
   try "collect kernel logs"
 
   if [[ -e "/var/log/dmesg" ]]; then
       cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
   dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
+  uname -a > "${COLLECT_DIR}/kernel/uname.txt"
 
   ok
 }
@@ -480,12 +480,11 @@ get_docker_info() {
     timeout 75 docker ps --all --no-trunc > "${COLLECT_DIR}"/docker/docker-ps.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker ps --all --no-truc output \" "
     timeout 75 docker images > "${COLLECT_DIR}"/docker/docker-images.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker images output \" "
     timeout 75 docker version > "${COLLECT_DIR}"/docker/docker-version.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker version output \" "
-
-    ok
-
   else
     warning "The Docker daemon is not running."
   fi
+
+  ok
 }
 
 get_containers_info() {
@@ -495,11 +494,8 @@ get_containers_info() {
     for i in $(docker ps -q); do
       timeout 75 docker inspect "${i}" > "${COLLECT_DIR}"/docker/container-"${i}".txt 2>&1
     done
-
-    ok
-
-    else
-      warning "The Docker daemon is not running."
+  else
+    warning "The Docker daemon is not running."
   fi
 
   ok
