@@ -21,7 +21,7 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-readonly PROGRAM_VERSION="0.0.3"
+readonly PROGRAM_VERSION="0.0.4"
 readonly PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
 readonly PROGRAM_NAME="$(basename "$0" .sh)"
 readonly PROGRAM_DIR="/opt/log-collector"
@@ -143,7 +143,7 @@ warning() {
 }
 
 die() {
-  echo "Fatal Error! $* Exiting!"
+  echo -e "\n\tFatal Error! $* Exiting!\n"
   exit 1
 }
 
@@ -167,7 +167,7 @@ version_output() {
 }
 
 systemd_check() {
-  if [[ -L "/sbin/init" ]]; then
+  if  command -v systemctl >/dev/null 2>&1; then
       INIT_TYPE="systemd"
     else
       INIT_TYPE="other"
@@ -256,8 +256,6 @@ finished() {
   if [[ "${mode}" == "collect" ]]; then
       cleanup
       echo -e "\n\tDone... your bundled logs are located in ${PROGRAM_DIR}/eks_${INSTANCE_ID}_$(date --utc +%Y-%m-%d_%H%M-%Z)_${PROGRAM_VERSION}.tar.gz\n"
-    else
-      echo -e "\n\tDone... debug is enabled\n"
   fi
 }
 
@@ -352,9 +350,7 @@ get_eks_logs_and_configfiles() {
       timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
       for entry in kubelet kube-proxy; do
-        if [[ -e "/etc/systemd/system/${entry}.service" ]]; then
-          cp --force --recursive "/etc/systemd/system/${entry}.service" "${COLLECT_DIR}"/kubelet/
-        fi
+        systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt >/dev/null 2>&1
       done
       ;;
     *)
@@ -510,23 +506,35 @@ enable_docker_debug() {
       if [[ -e /etc/sysconfig/docker ]] && grep -q "^\s*OPTIONS=\"-D" /etc/sysconfig/docker
       then
         echo "Debug mode is already enabled."
+        ok
       else
-
         if [[ -e /etc/sysconfig/docker ]]; then
           echo "OPTIONS=\"-D \$OPTIONS\"" >> /etc/sysconfig/docker
 
           try "restart Docker daemon to enable debug mode"
           service docker restart
+          ok
         fi
-
-        ok
-
       fi
       ;;
     *)
       warning "The current operating system is not supported."
+
+      ok
       ;;
   esac
+}
+
+confirm_enable_docker_debug() {
+    read -r -p "${1:-Enabled Docker Debug will restart the Docker Daemon and restart all running container. Are you sure? [y/N]} " USER_INPUT
+    case "$USER_INPUT" in
+        [yY][eE][sS]|[yY]) 
+            enable_docker_debug
+            ;;
+        *)
+            die "\"No\" was selected."
+            ;;
+    esac
 }
 
 parse_options "$@"
@@ -542,7 +550,7 @@ case "${mode}" in
     finished
     ;;
   enable_debug)
-    enable_debug
+    confirm_enable_docker_debug
     finished
     ;;
   *)
