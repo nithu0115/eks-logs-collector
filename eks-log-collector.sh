@@ -299,7 +299,7 @@ get_common_logs() {
 
   for entry in ${COMMON_LOGS[*]}; do
     if [[ -e "/var/log/${entry}" ]]; then
-      cp --force --recursive /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
+      cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
     fi
   done
 
@@ -328,7 +328,7 @@ get_docker_logs() {
     other)
       for entry in docker upstart/docker; do
         if [[ -e "/var/log/${entry}" ]]; then
-          cp --force --recursive /var/log/"${entry}" "${COLLECT_DIR}"/docker/
+          cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/docker/
         fi
       done
       ;;
@@ -400,7 +400,7 @@ get_cni_config() {
   try "collect CNI configuration information"
 
     if [[ -e "/etc/cni/net.d/" ]]; then
-        cp --force --recursive /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
+        cp --force --recursive --dereference /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
     fi  
 
   ok
