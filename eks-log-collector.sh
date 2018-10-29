@@ -350,7 +350,7 @@ get_eks_logs_and_configfiles() {
       timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
       for entry in kubelet kube-proxy; do
-        systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt >/dev/null 2>&1
+        systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt 2>&1
       done
       ;;
     *)
