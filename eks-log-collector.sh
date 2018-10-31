@@ -42,6 +42,7 @@ REQUIRED_UTILS=(
   grep
   awk
   df
+  sysctl
 )
 
 COMMON_DIRECTORIES=(
@@ -74,13 +75,6 @@ IPAMD_DATA=(
   networkutils-env-settings
   ipamd-env-settings
   eni-configs
-)
-
-# Sysctls datapoints
-STSCTLS_DATA=(
-  all
-  default
-  eth0
 )
 
 # Kubelet datapoints
@@ -375,10 +369,8 @@ get_ipamd_info() {
 
 get_sysctls_info() {
   try "collect sysctls information"
-
-  for entry in ${STSCTLS_DATA[*]}; do
-      cat /proc/sys/net/ipv4/conf/"${entry}"/rp_filter >> "${COLLECT_DIR}"/sysctls/"${entry}".txt
-  done 
+  
+  sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt
 
   ok
 }
