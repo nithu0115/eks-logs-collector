@@ -307,6 +307,7 @@ get_kernel_info() {
       cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
   dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
+  dmesg --ctime > "${COLLECT_DIR}/kernel/dmesg.human.current"
   uname -a > "${COLLECT_DIR}/kernel/uname.txt"
 
   ok
