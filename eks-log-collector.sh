@@ -221,7 +221,6 @@ collect() {
   get_sysctls_info
   get_networking_info
   get_cni_config
-  get_kubelet_info
   get_containers_info
   get_docker_logs
 }
