@@ -77,13 +77,6 @@ IPAMD_DATA=(
   eni-configs
 )
 
-# Kubelet datapoints
-KUBELET_DATA=(
-  pods
-  stats
-  eth0
-)
-
 help() {
   echo "USAGE: ${PROGRAM_NAME} --mode=collect|enable_debug"
   echo "       ${PROGRAM_NAME} --help"
@@ -395,16 +388,6 @@ get_cni_config() {
     if [[ -e "/etc/cni/net.d/" ]]; then
         cp --force --recursive --dereference /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
     fi  
-
-  ok
-}
-
-get_kubelet_info() {
-  try "collect Kubelet information"
-
-  for entry in ${KUBELET_DATA[*]}; do
-      curl --max-time 3 --silent http://localhost:10255/"${entry}" >> "${COLLECT_DIR}"/kubelet/"${entry}".json
-  done 
 
   ok
 }
