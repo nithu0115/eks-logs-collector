@@ -363,7 +363,7 @@ get_ipamd_info() {
 get_sysctls_info() {
   try "collect sysctls information"
   
-  sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt
+  sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt 2>/dev/null
 
   ok
 }
