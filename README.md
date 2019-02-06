@@ -50,27 +50,7 @@ Trying to collect active system services...
 Trying to collect Docker daemon information... 
 Trying to collect kubelet information... 
 Trying to collect L-IPAMD information... 
-Trying to collect sysctls information... sysctl: reading key "net.ipv6.conf.all.stable_secret"
-sysctl: reading key "net.ipv6.conf.default.stable_secret"
-sysctl: reading key "net.ipv6.conf.docker0.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni0ba57e14be5.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni1991d8b7bf7.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni2d6184bb26d.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni45836037bdd.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni51b59eb2eaf.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni619d920a18d.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni8ae8a1e4151.stable_secret"
-sysctl: reading key "net.ipv6.conf.eni9a0fe9f8660.stable_secret"
-sysctl: reading key "net.ipv6.conf.enib0576570462.stable_secret"
-sysctl: reading key "net.ipv6.conf.enib8a2295c1df.stable_secret"
-sysctl: reading key "net.ipv6.conf.enid2bb16ac515.stable_secret"
-sysctl: reading key "net.ipv6.conf.enid5ec2fb4c28.stable_secret"
-sysctl: reading key "net.ipv6.conf.enie617007cc63.stable_secret"
-sysctl: reading key "net.ipv6.conf.eth0.stable_secret"
-sysctl: reading key "net.ipv6.conf.eth1.stable_secret"
-sysctl: reading key "net.ipv6.conf.eth2.stable_secret"
-sysctl: reading key "net.ipv6.conf.lo.stable_secret"
-
+Trying to collect sysctls information... 
 Trying to collect networking infomation... 
 Trying to collect CNI configuration information... 
 Trying to collect running Docker containers and gather container data... 
