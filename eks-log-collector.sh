@@ -22,7 +22,7 @@ export LC_ALL="C"
 
 # Global options
 readonly PROGRAM_VERSION="0.0.4"
-readonly PROGRAM_SOURCE="https://github.com/awslabs/amazon-eks-ami"
+readonly PROGRAM_SOURCE="https://github.com/nithu0115/eks-logs-collector"
 readonly PROGRAM_NAME="$(basename "$0" .sh)"
 readonly PROGRAM_DIR="/opt/log-collector"
 readonly COLLECT_DIR="/tmp/${PROGRAM_NAME}"
