@@ -273,9 +273,9 @@ get_selinux_info() {
 get_iptables_info() {
   try "collect iptables information"
 
-  iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
-  iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
-  iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
+  timeout 75 iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
+  timeout 75 iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
+  timeout 75 iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
 
   ok
 }
@@ -285,7 +285,7 @@ get_common_logs() {
 
   for entry in ${COMMON_LOGS[*]}; do
     if [[ -e "/var/log/${entry}" ]]; then
-      cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
+      timeout 75 cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
     fi
   done
 
@@ -296,11 +296,11 @@ get_kernel_info() {
   try "collect kernel logs"
 
   if [[ -e "/var/log/dmesg" ]]; then
-      cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
+      timeout 75 cp --force /var/log/dmesg "${COLLECT_DIR}/kernel/dmesg.boot"
   fi
-  dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
-  dmesg --ctime > "${COLLECT_DIR}/kernel/dmesg.human.current"
-  uname -a > "${COLLECT_DIR}/kernel/uname.txt"
+  timeout 75 dmesg > "${COLLECT_DIR}/kernel/dmesg.current"
+  timeout 75 dmesg --ctime > "${COLLECT_DIR}/kernel/dmesg.human.current"
+  timeout 75 uname -a > "${COLLECT_DIR}/kernel/uname.txt"
 
   ok
 }
@@ -310,12 +310,12 @@ get_docker_logs() {
 
   case "${INIT_TYPE}" in
     systemd)
-      journalctl --unit=docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
+      timeout 75 journalctl --unit=docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
       ;;
     other)
       for entry in docker upstart/docker; do
         if [[ -e "/var/log/${entry}" ]]; then
-          cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/docker/
+          timeout 75 cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/docker/
         fi
       done
       ;;
@@ -337,7 +337,7 @@ get_eks_logs_and_configfiles() {
       timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
       for entry in kubelet kube-proxy; do
-        systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt 2>&1
+        timeout 75 systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt 2>&1
       done
       ;;
     *)
@@ -352,10 +352,10 @@ get_ipamd_info() {
   try "collect L-IPAMD information"
 
   for entry in ${IPAMD_DATA[*]}; do
-      curl --max-time 3 --silent http://localhost:61678/v1/"${entry}" >> "${COLLECT_DIR}"/ipamd/"${entry}".txt
+      timeout 75 curl --max-time 3 --silent http://localhost:61678/v1/"${entry}" >> "${COLLECT_DIR}"/ipamd/"${entry}".txt
   done
 
-  curl --max-time 3 --silent http://localhost:61678/metrics > "${COLLECT_DIR}"/ipamd/metrics.txt 2>&1
+  timeout 75 curl --max-time 3 --silent http://localhost:61678/metrics > "${COLLECT_DIR}"/ipamd/metrics.txt 2>&1
 
   ok
 }
@@ -363,7 +363,7 @@ get_ipamd_info() {
 get_sysctls_info() {
   try "collect sysctls information"
   
-  sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt 2>/dev/null
+  timeout 75 sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt 2>/dev/null
 
   ok
 }
@@ -385,7 +385,7 @@ get_cni_config() {
   try "collect CNI configuration information"
 
     if [[ -e "/etc/cni/net.d/" ]]; then
-        cp --force --recursive --dereference /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
+        timeout 75 cp --force --recursive --dereference /etc/cni/net.d/* "${COLLECT_DIR}"/cni/
     fi  
 
   ok
@@ -406,10 +406,10 @@ get_pkglist() {
 
   case "${PACKAGE_TYPE}" in
     rpm)
-      rpm -qa > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
+      timeout 75 rpm -qa > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
       ;;
     deb)
-      dpkg --list > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
+      timeout 75 dpkg --list > "${COLLECT_DIR}"/system/pkglist.txt 2>&1
       ;;
     *)
       warning "Unknown package type."
@@ -424,12 +424,12 @@ get_system_services() {
 
   case "${INIT_TYPE}" in
     systemd)
-      systemctl list-units > "${COLLECT_DIR}"/system/services.txt 2>&1
+      timeout 75 systemctl list-units > "${COLLECT_DIR}"/system/services.txt 2>&1
       ;;
     other)
-      initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > "${COLLECT_DIR}"/system/services.txt 2>&1
+      timeout 75 initctl list | awk '{ print $1 }' | xargs -n1 initctl show-config > "${COLLECT_DIR}"/system/services.txt 2>&1
       printf "\n\n\n\n" >> "${COLLECT_DIR}"/system/services.txt 2>&1
-      service --status-all >> "${COLLECT_DIR}"/system/services.txt 2>&1
+      timeout 75 service --status-all >> "${COLLECT_DIR}"/system/services.txt 2>&1
       ;;
     *)
       warning "Unable to determine active services."
@@ -462,7 +462,7 @@ get_containers_info() {
   try "collect running Docker containers and gather container data"
 
   if [[ "$(pgrep dockerd)" -ne 0 ]]; then
-    for i in $(docker ps -q); do
+    for i in $(timeout 75 docker ps -q); do
       timeout 75 docker inspect "${i}" > "${COLLECT_DIR}"/docker/container-"${i}".txt 2>&1
     done
   else
