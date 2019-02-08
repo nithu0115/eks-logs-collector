@@ -247,13 +247,13 @@ finished() {
 
 get_mounts_info() {
   try "collect mount points and volume information"
-  mount > "${COLLECT_DIR}"/storage/mounts.txt
+  timeout 75 mount > "${COLLECT_DIR}"/storage/mounts.txt
   echo >> "${COLLECT_DIR}"/storage/mounts.txt
   df --human-readable >> "${COLLECT_DIR}"/storage/mounts.txt
-  lsblk > "${COLLECT_DIR}"/storage/lsblk.txt
-  lvs > "${COLLECT_DIR}"/storage/lvs.txt
-  pvs > "${COLLECT_DIR}"/storage/pvs.txt
-  vgs > "${COLLECT_DIR}"/storage/vgs.txt
+  timeout 75 lsblk > "${COLLECT_DIR}"/storage/lsblk.txt
+  timeout 75 lvs > "${COLLECT_DIR}"/storage/lvs.txt
+  timeout 75 pvs > "${COLLECT_DIR}"/storage/pvs.txt
+  timeout 75 vgs > "${COLLECT_DIR}"/storage/vgs.txt
 
   ok
 }
