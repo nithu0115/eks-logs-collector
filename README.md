@@ -15,7 +15,7 @@ Confirm if the tarball file was successfully created (it can be .tgz or .tar.gz)
 Download the tarball using your favourite Secure Copy tool.
 
 #### Example output
-The project can be used in normal or enable_debug(**Caution: enable_debug will prompt to confirm if we can restart Docker daemo which would kill running containers**).
+The project can be used in normal or enable_debug(**Caution: enable_debug will prompt to confirm if we can restart Docker daemon which would kill running containers**).
 
 ```
 # sudo bash eks-log-collector.sh --help
