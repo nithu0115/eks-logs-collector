@@ -58,14 +58,16 @@ COMMON_DIRECTORIES=(
   cni # eks
 )
 
+# Defines COMMON_LOGS in regex pattern 
 COMMON_LOGS=(
-  syslog
-  messages
-  aws-routed-eni # eks
-  containers # eks
-  pods # eks
-  cloud-init.log
-  cloud-init-output.log
+  ^syslog
+  ^messages
+  ^aws-routed-eni # eks
+  ^containers # eks
+  ^pods # eks
+  ^cloud-init.log
+  ^cloud-init-output.log
+  ^kube-proxy* # kube-proxy and all of its rotated logs
 )
 
 # L-IPAMD introspection data points
@@ -284,9 +286,12 @@ get_common_logs() {
   try "collect common operating system logs"
 
   for entry in ${COMMON_LOGS[*]}; do
-    if [[ -e "/var/log/${entry}" ]]; then
-      cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
-    fi
+    # using grep regex pattern prevents error when a file pattern is not found.
+    # support multiple file selection matching the pattern
+    files=`ls /var/log/ | grep "${entry}"`
+    for file in ${files[*]}; do
+      cp --force --recursive --dereference "/var/log/${file}" "${COLLECT_DIR}"/var_log/
+    done
   done
 
   ok
