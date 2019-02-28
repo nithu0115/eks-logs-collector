@@ -66,6 +66,7 @@ COMMON_LOGS=(
   pods # eks
   cloud-init.log
   cloud-init-output.log
+  kube-proxy.log
 )
 
 # L-IPAMD introspection data points
