@@ -65,7 +65,7 @@ Trying to archive gathered information...
 
 #### *Prerequisites*:
 
-* Configure AWS CLI on the system where you will run the below commands. The IAM entity (User/Role) should have SSM permissions.
+* Configure AWS CLI on the system where you will run the below commands. The IAM entity (User/Role) should have permissions to run/invoke `aws ssm send-command` and `get-command-invocation` commands.
 
 * SSM agent should be installed and running on Worker Node(s). [How to Install SSM Agent link](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-manual-agent-install.html)
 
