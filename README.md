@@ -61,7 +61,7 @@ Trying to archive gathered information...
 ```
 
 
-### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Collecting EKS Worker Node(s) logs using SSM
+### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Running EKS log collector on Worker Node(s) logs using SSM agent and upload the bundle(tar) to a S3 Bucket 
 
 #### *Prerequisites*:
 
