@@ -60,6 +60,34 @@ Trying to archive gathered information...
 	Done... your bundled logs are located in /opt/log-collector/eks_i-0717c9d54b6cfaa19_2019-02-02_0103-UTC_0.0.4.tar.gz
 ```
 
+
+### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Collecting EKS Worker Node(s) logs using SSM
+
+#### *Prerequisites*:
+
+* Configure AWS CLI on the system where you will run the below commands. The IAM entity (User/Role) should have SSM permissions.
+
+* SSM agent should be installed and running on Worker Node(s). [How to Install SSM Agent link](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-manual-agent-install.html)
+
+* Worker Node(s) should have required permissions to communicate with SSM service. IAM managed role `AmazonEC2RoleforSSM` will have all the required permission for SSM agent to run on EC2 instances. The IAM managed role `AmazonEC2RoleforSSM` has `S3:PutObject` permission to all S3 resources. 
+
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Note:* For more granular control of the IAM permission check [AWS Systems Manager Permissions Reference ](https://docs.aws.amazon.com/systems-manager/latest/userguide/auth-and-access-control-permissions-reference.html) link
+
+* A S3 bucket location is required which is taken as an input parameter to `aws ssm send-command` command, to which the logs should be pushed.
+
+
+#### *To run `aws ssm send-command` to collect logs from Worker Node(s):*
+
+1. Create the SSM document named "EKSLogCollector" using the following command:
+
+```
+aws ssm create-document --name "EKSLogCollector" --document-type "Command" --content https://raw.githubusercontent.com/nithu0115/eks-logs-collector/master/eks-ssm-content.json
+```
+
+2. To execute the bash script in the SSM document and to collect the logs from worker, run the following command: 
+
+```
+=======
 ### Collecting EKS Worker Node(s) logs using SSM
 
 #### *Prerequisites*:
@@ -98,8 +126,4 @@ aws ssm get-command-invocation --command-id "<SSM command ID>" --instance-id "<E
 &nbsp;&nbsp;&nbsp;&nbsp;`EC2 Instance ID`The EC2 Instance ID provided in the `aws ssm send-command` in step2
 
 4. Once the above command is executed successfully, the logs should be present in the S3 bucket specified in the previous step. 
-
-
-
-
 
