@@ -61,9 +61,9 @@ Trying to archive gathered information...
 ```
 
 
-### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Running EKS log collector script on Worker Node(s) and upload the bundle(tar) to a S3 Bucket using SSM agent 
+#### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Run EKS log collector script on Worker Node(s) and upload the bundle(tar) to a S3 Bucket using SSM agent 
 
-#### *Prerequisites*:
+##### *Prerequisites*:
 
 * Configure AWS CLI on the system where you will run the below commands. The IAM entity (User/Role) should have permissions to run/invoke `aws ssm send-command` and `get-command-invocation` commands.
 
@@ -76,7 +76,7 @@ Trying to archive gathered information...
 * A S3 bucket location is required which is taken as an input parameter to `aws ssm send-command` command, to which the logs should be pushed.
 
 
-#### *To run `aws ssm send-command` to collect logs from Worker Node(s):*
+#### *To invoke SSM agent to run EKS log collector script and push bundle to S3 from Worker Node(s):*
 
 1. Create the SSM document named "EKSLogCollector" using the following command: <br/>
 ```
