@@ -78,47 +78,15 @@ Trying to archive gathered information...
 
 #### *To run `aws ssm send-command` to collect logs from Worker Node(s):*
 
-1. Create the SSM document named "EKSLogCollector" using the following command:
-
+1. Create the SSM document named "EKSLogCollector" using the following command: <br/>
 ```
 aws ssm create-document --name "EKSLogCollector" --document-type "Command" --content https://raw.githubusercontent.com/nithu0115/eks-logs-collector/master/eks-ssm-content.json
 ```
-
-2. To execute the bash script in the SSM document and to collect the logs from worker, run the following command: 
-
-```
-=======
-### Collecting EKS Worker Node(s) logs using SSM
-
-#### *Prerequisites*:
-
-* Configure AWS CLI on the system where you will run the below commands. The IAM entity (User/Role) should have SSM permissions.
-
-* SSM agent should be installed and running on Worker Node(s). [How to Install SSM Agent link](https://docs.aws.amazon.com/systems-manager/latest/userguide/sysman-manual-agent-install.html)
-
-* Worker Node(s) should have required permissions to communicate with SSM service. IAM managed role `AmazonEC2RoleforSSM` will have all the required permission for SSM agent to run on EC2 instances. The IAM managed role `AmazonEC2RoleforSSM` has `S3:PutObject` permission to all S3 resources. 
-
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*Note:* For more granular control of the IAM permission check [AWS Systems Manager Permissions Reference ](https://docs.aws.amazon.com/systems-manager/latest/userguide/auth-and-access-control-permissions-reference.html) link
-
-* A S3 bucket location is required which is taken as an input parameter to `aws ssm send-command` command, to which the logs should be pushed.
-
-
-#### *To run `aws ssm send-command` to collect logs from Worker Node(s):*
-
-1. Create the SSM document named "EKSLogCollector" using the following command:
-
-```
-aws ssm create-document --name "EKSLogCollector" --document-type "Command" --content https://raw.githubusercontent.com/nithu0115/eks-logs-collector/master/eks-ssm-content.json
-```
-
-2. To execute the bash script in the SSM document and to collect the logs from worker, run the following command: 
-
+2. To execute the bash script in the SSM document and to collect the logs from worker, run the following command: <br/>
 ```
 aws ssm send-command --instance-ids <EC2 Instance ID> --document-name "EKSLogCollector" --parameters "bucketName=<S3 bucket name to push the logs>" --output json
 ```
-
-3. To check the status of SSM command submitted in previous step use the command 
-
+3. To check the status of SSM command submitted in previous step use the command <br/> 
 ```   
 aws ssm get-command-invocation --command-id "<SSM command ID>" --instance-id "<EC2 Instance ID>" --output text
 ```
