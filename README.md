@@ -3,7 +3,9 @@
 <span style="font-family: calibri, Garamond, 'Comic Sans MS' ;">This project was created to collect Amazon EKS log files and OS logs for troubleshooting Amazon EKS customer support cases.</span>
 
 #### Usage
-Run this project as the root user:
+* Collect EKS logs using SSM agent, jump to below [section](#collect-eks-logs-using-ssm-agent) _(or)_
+
+* Run this project as the root user:
 ```
 curl -O https://raw.githubusercontent.com/nithu0115/eks-logs-collector/master/eks-log-collector.sh
 sudo bash eks-log-collector.sh
@@ -61,7 +63,8 @@ Trying to archive gathered information...
 ```
 
 
-#### <span style="font-family: times, serif; font-size:16pt; font-style:italic;"> Run EKS log collector script on Worker Node(s) and upload the bundle(tar) to a S3 Bucket using SSM agent 
+### <span style="font-family: times, serif; font-size:16pt; font-style:italic;">Collect EKS logs using SSM agent 
+#### <span style="font-family: times, serif; font-size:16pt; font-style:italic;">To run EKS log collector script on Worker Node(s) and upload the bundle(tar) to a S3 Bucket using SSM agent, please follow below steps
 
 ##### *Prerequisites*:
 
