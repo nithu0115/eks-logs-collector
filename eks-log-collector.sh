@@ -222,7 +222,6 @@ collect() {
   get_sysctls_info
   get_networking_info
   get_cni_config
-  get_containers_info
   get_docker_logs
 }
 
@@ -273,7 +272,8 @@ get_selinux_info() {
 
 get_iptables_info() {
   try "collect iptables information"
-
+  
+  iptables --numeric --verbose --list --table mangle > "${COLLECT_DIR}"/networking/iptables-mangle.txt
   iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
   iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
   iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
@@ -363,9 +363,9 @@ get_ipamd_info() {
 
 get_sysctls_info() {
   try "collect sysctls information"
-  
+  # dump all sysctls
   sysctl --all >> "${COLLECT_DIR}"/sysctls/sysctl_all.txt 2>/dev/null
-
+  
   ok
 }
 
@@ -452,20 +452,6 @@ get_docker_info() {
     timeout 75 docker ps --all --no-trunc > "${COLLECT_DIR}"/docker/docker-ps.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker ps --all --no-truc output \" "
     timeout 75 docker images > "${COLLECT_DIR}"/docker/docker-images.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker images output \" "
     timeout 75 docker version > "${COLLECT_DIR}"/docker/docker-version.txt 2>&1 || echo -e "\tTimed out, ignoring \"docker version output \" "
-  else
-    warning "The Docker daemon is not running."
-  fi
-
-  ok
-}
-
-get_containers_info() {
-  try "collect running Docker containers and gather container data"
-
-  if [[ "$(pgrep dockerd)" -ne 0 ]]; then
-    for i in $(docker ps -q); do
-      timeout 75 docker inspect "${i}" > "${COLLECT_DIR}"/docker/container-"${i}".txt 2>&1
-    done
   else
     warning "The Docker daemon is not running."
   fi
