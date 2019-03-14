@@ -286,6 +286,10 @@ get_common_logs() {
 
   for entry in ${COMMON_LOGS[*]}; do
     if [[ -e "/var/log/${entry}" ]]; then
+        if [[ "${entry}" == "messages" ]]; then
+          tail -c 5M /var/log/messages > "${COLLECT_DIR}"/var_log/messages
+          continue
+        fi
       cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
     fi
   done
