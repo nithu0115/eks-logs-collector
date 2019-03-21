@@ -335,6 +335,22 @@ get_docker_logs() {
 get_eks_logs_and_configfiles() {
   try "collect kubelet information"
 
+  if [[ -n "${KUBECONFIG}" ]]; then
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+  elif [[ -f /etc/systemd/system/kubelet.service ]]; then
+    KUBECONFIG=`grep kubeconfig /etc/systemd/system/kubelet.service | awk '{print $2}'`
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+      if [[ $? != 0 ]]; then
+         if [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
+            command -v kubectl > /dev/null && kubectl get --kubeconfig=/etc/eksctl/kubeconfig.yaml svc > "${COLLECT_DIR}"/kubelet/svc.log
+         fi
+      fi
+  elif [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=/etc/eksctl/kubeconfig.yaml svc > "${COLLECT_DIR}"/kubelet/svc.log
+  else
+    echo "======== Unable to find KUBECONFIG, IGNORING POD DATA =========" >> "${COLLECT_DIR}"/kubelet/svc.log
+  fi
+
   case "${INIT_TYPE}" in
     systemd)
       timeout 75 journalctl --unit=kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubelet.log
