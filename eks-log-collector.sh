@@ -217,7 +217,7 @@ collect() {
   get_pkglist
   get_system_services
   get_docker_info
-  get_eks_logs_and_configfiles
+  get_k8s_info
   get_ipamd_info
   get_sysctls_info
   get_networking_info
@@ -332,14 +332,35 @@ get_docker_logs() {
   ok
 }
 
-get_eks_logs_and_configfiles() {
+get_k8s_info() {
   try "collect kubelet information"
+
+  if [[ -n "${KUBECONFIG}" ]]; then
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+    kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+  elif [[ -f /etc/systemd/system/kubelet.service ]]; then
+    KUBECONFIG=`grep kubeconfig /etc/systemd/system/kubelet.service | awk '{print $2}'`
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+    kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+      if [[ $? != 0 ]]; then
+         if [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
+            KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
+            command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+            kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+         fi
+      fi
+  elif [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
+    KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
+    command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
+    kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+  else
+    echo "======== Unable to find KUBECONFIG, IGNORING POD DATA =========" >> "${COLLECT_DIR}"/kubelet/svc.log
+  fi
 
   case "${INIT_TYPE}" in
     systemd)
       timeout 75 journalctl --unit=kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubelet.log
       timeout 75 journalctl --unit=kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubeproxy.log
-      timeout 75 kubectl config view --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
       for entry in kubelet kube-proxy; do
         systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt 2>&1
