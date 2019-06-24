@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash 
 
 # Copyright 2017 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 #
@@ -21,15 +21,18 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-readonly PROGRAM_VERSION="0.0.4"
+readonly PROGRAM_VERSION="0.5.0"
 readonly PROGRAM_SOURCE="https://github.com/nithu0115/eks-logs-collector"
 readonly PROGRAM_NAME="$(basename "$0" .sh)"
 readonly PROGRAM_DIR="/opt/log-collector"
 readonly COLLECT_DIR="/tmp/${PROGRAM_NAME}"
-readonly DAYS_7=$(date -d "-7 days" '+%Y-%m-%d %H:%M')
+readonly DAYS_10=$(date -d "-10 days" '+%Y-%m-%d %H:%M')
 INSTANCE_ID=""
 INIT_TYPE=""
 PACKAGE_TYPE=""
+
+# Script run defaults
+mode='collect'
 
 REQUIRED_UTILS=(
   timeout
@@ -79,18 +82,21 @@ IPAMD_DATA=(
 )
 
 help() {
-  echo "USAGE: ${PROGRAM_NAME} --mode=collect|enable_debug"
-  echo "       ${PROGRAM_NAME} --help"
+  echo ""
+  echo "USAGE: ${PROGRAM_NAME} --help [ --mode=collect|enable_debug --ignore_introspection=true|false --ignore_metrics=true|false ]"
   echo ""
   echo "OPTIONS:"
-  echo "     --mode  Sets the desired mode of the script. For more information,"
-  echo "             see the MODES section."
-  echo "     --help  Show this help message."
+  echo "   --mode  Has two parameters  1) collect or 2) enable_debug,:"
+  echo "             collect        Gathers basic operating system, Docker daemon, and"
+  echo "                            Amazon EKS related config files and logs. This is the default mode."
+  echo "             enable_debug   Enables debug mode for the Docker daemon(Not for production use)"
   echo ""
-  echo "MODES:"
-  echo "     collect       Gathers basic operating system, Docker daemon, and Amazon"
-  echo "                 EKS related config files and logs. This is the default mode."
-  echo "     enable_debug  Enables debug mode for the Docker daemon"
+  echo "   --ignore_introspection To ignore introspection of IPAMD; Pass this flag if DISABLE_INTROSPECTION is enabled on CNI"
+  echo ""
+  echo "   --ignore_metrics Variable To ignore prometheus metrics collection; Pass this flag if DISABLE_METRICS enabled on CNI"
+  echo ""
+  echo "   --help  Show this help message."
+  echo ""
 }
 
 parse_options() {
@@ -105,11 +111,17 @@ parse_options() {
       mode)
         eval "${param}"="${val}"
         ;;
+      ignore_introspection)
+        eval "${param}"="${val}"
+        ;;
+      ignore_metrics)
+        eval "${param}"="${val}"
+        ;;
       help)
         help && exit 0
         ;;
       *)
-        echo "Command not found: '--$param'"
+        echo "Parameter not found: '$param'"
         help && exit 1
         ;;
     esac
@@ -273,10 +285,11 @@ get_selinux_info() {
 get_iptables_info() {
   try "collect iptables information"
   
-  iptables --numeric --verbose --list --table mangle > "${COLLECT_DIR}"/networking/iptables-mangle.txt
-  iptables --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
-  iptables --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
-  iptables-save > "${COLLECT_DIR}"/networking/iptables-save.out
+  iptables --wait 1 --numeric --verbose --list --table mangle > "${COLLECT_DIR}"/networking/iptables-mangle.txt
+  iptables --wait 1 --numeric --verbose --list --table filter > "${COLLECT_DIR}"/networking/iptables-filter.txt
+  iptables --wait 1 --numeric --verbose --list --table nat > "${COLLECT_DIR}"/networking/iptables-nat.txt
+  iptables --wait 1 --numeric --verbose --list > "${COLLECT_DIR}"/networking/iptables.txt
+  iptables-save > "${COLLECT_DIR}"/networking/iptables-save.txt
 
   ok
 }
@@ -287,7 +300,7 @@ get_common_logs() {
   for entry in ${COMMON_LOGS[*]}; do
     if [[ -e "/var/log/${entry}" ]]; then
         if [[ "${entry}" == "messages" ]]; then
-          tail -c 5M /var/log/messages > "${COLLECT_DIR}"/var_log/messages
+          tail -c 10M /var/log/messages > "${COLLECT_DIR}"/var_log/messages
           continue
         fi
       cp --force --recursive --dereference /var/log/"${entry}" "${COLLECT_DIR}"/var_log/
@@ -315,7 +328,7 @@ get_docker_logs() {
 
   case "${INIT_TYPE}" in
     systemd)
-      journalctl --unit=docker --since "${DAYS_7}" > "${COLLECT_DIR}"/docker/docker.log
+      journalctl --unit=docker --since "${DAYS_10}" > "${COLLECT_DIR}"/docker/docker.log
       ;;
     other)
       for entry in docker upstart/docker; do
@@ -335,13 +348,15 @@ get_docker_logs() {
 get_k8s_info() {
   try "collect kubelet information"
 
-  if [[ -n "${KUBECONFIG}" ]]; then
+  if [[ -n "${KUBECONFIG:-}" ]]; then
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+
   elif [[ -f /etc/systemd/system/kubelet.service ]]; then
     KUBECONFIG=`grep kubeconfig /etc/systemd/system/kubelet.service | awk '{print $2}'`
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+
       if [[ $? != 0 ]]; then
          if [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
             KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
@@ -349,18 +364,20 @@ get_k8s_info() {
             kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
          fi
       fi
+
   elif [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
     KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
+
   else
     echo "======== Unable to find KUBECONFIG, IGNORING POD DATA =========" >> "${COLLECT_DIR}"/kubelet/svc.log
   fi
 
   case "${INIT_TYPE}" in
     systemd)
-      timeout 75 journalctl --unit=kubelet --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubelet.log
-      timeout 75 journalctl --unit=kubeproxy --since "${DAYS_7}" > "${COLLECT_DIR}"/kubelet/kubeproxy.log
+      timeout 75 journalctl --unit=kubelet --since "${DAYS_10}" > "${COLLECT_DIR}"/kubelet/kubelet.log
+      timeout 75 journalctl --unit=kubeproxy --since "${DAYS_10}" > "${COLLECT_DIR}"/kubelet/kubeproxy.log
 
       for entry in kubelet kube-proxy; do
         systemctl cat "${entry}" > "${COLLECT_DIR}"/kubelet/"${entry}"_service.txt 2>&1
@@ -376,12 +393,19 @@ get_k8s_info() {
 
 get_ipamd_info() {
   try "collect L-IPAMD information"
+  if [[ "${ignore_introspection}" == "false" ]]; then
+    for entry in ${IPAMD_DATA[*]}; do
+      curl --max-time 3 --silent http://localhost:61679/v1/"${entry}" >> "${COLLECT_DIR}"/ipamd/"${entry}".txt
+    done
+  else
+    echo "Ignoring IPAM introspection stats as mentioned" >> "${COLLECT_DIR}"/ipamd/ipam_introspection_ignore.txt
+  fi
 
-  for entry in ${IPAMD_DATA[*]}; do
-      curl --max-time 3 --silent http://localhost:61678/v1/"${entry}" >> "${COLLECT_DIR}"/ipamd/"${entry}".txt
-  done
-
-  curl --max-time 3 --silent http://localhost:61678/metrics > "${COLLECT_DIR}"/ipamd/metrics.txt 2>&1
+  if [[ "${ignore_metrics}" == "false" ]]; then
+    curl --max-time 3 --silent http://localhost:61678/metrics > "${COLLECT_DIR}"/ipamd/metrics.txt 2>&1
+  else
+    echo "Ignoring Prometheus Metrics collection as mentioned" >> "${COLLECT_DIR}"/ipamd/ipam_metrics_ignore.txt
+  fi
 
   ok
 }
@@ -525,10 +549,6 @@ confirm_enable_docker_debug() {
 }
 
 parse_options "$@"
-
-if [[ -z "${mode}" ]]; then
- mode="collect"
-fi
 
 case "${mode}" in
   collect)
