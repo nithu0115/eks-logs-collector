@@ -21,7 +21,7 @@ export LANG="C"
 export LC_ALL="C"
 
 # Global options
-readonly PROGRAM_VERSION="0.5.0"
+readonly PROGRAM_VERSION="0.5.1"
 readonly PROGRAM_SOURCE="https://github.com/nithu0115/eks-logs-collector"
 readonly PROGRAM_NAME="$(basename "$0" .sh)"
 readonly PROGRAM_DIR="/opt/log-collector"
@@ -352,21 +352,13 @@ get_k8s_info() {
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
-  elif [[ -f /etc/systemd/system/kubelet.service ]]; then
-    KUBECONFIG=`grep kubeconfig /etc/systemd/system/kubelet.service | awk '{print $2}'`
+  elif [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
+    KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
-      if [[ $? != 0 ]]; then
-         if [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
-            KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
-            command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
-            kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
-         fi
-      fi
-
-  elif [[ -f /etc/eksctl/kubeconfig.yaml ]]; then
-    KUBECONFIG="/etc/eksctl/kubeconfig.yaml"
+  elif [[ -f /etc/systemd/system/kubelet.service ]]; then
+    KUBECONFIG=`grep kubeconfig /etc/systemd/system/kubelet.service | awk '{print $2}'`
     command -v kubectl > /dev/null && kubectl get --kubeconfig=${KUBECONFIG} svc > "${COLLECT_DIR}"/kubelet/svc.log
     kubectl --kubeconfig=${KUBECONFIG} config view  --output yaml > "${COLLECT_DIR}"/kubelet/kubeconfig.yaml
 
