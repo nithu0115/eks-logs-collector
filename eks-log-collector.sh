@@ -33,6 +33,8 @@ PACKAGE_TYPE=""
 
 # Script run defaults
 mode='collect'
+ignore_introspection='false'
+ignore_metrics='false'
 
 REQUIRED_UTILS=(
   timeout
